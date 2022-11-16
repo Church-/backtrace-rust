@@ -4,29 +4,18 @@ extern crate serde_json;
 extern crate uuid;
 
 use std::collections::HashMap;
-use std::panic::PanicInfo;
 use std::time;
 
 use crate::Report;
 use crate::SubmissionTarget;
 
-pub fn submit<T>(st: &SubmissionTarget, _p: &PanicInfo, user_handler: &T)
-where
-    T: Fn(&mut Report, &PanicInfo) -> () + Send + Sync + 'static,
-{
-    let bt = backtrace::Backtrace::new();
-
+pub fn submit(st: &SubmissionTarget, r: &mut Report, bt: backtrace::Backtrace) {
     let version = rustc_version_runtime::version();
     let version = format!("{}.{}", version.major, version.minor);
 
     if std::env::var("DEBUG_BACKTRACEIO").is_ok() {
         println!("{:?}", version);
     }
-
-    let mut r = Report {
-        ..Default::default()
-    };
-    user_handler(&mut r, _p);
 
     let mut stack = Vec::new();
 
@@ -38,10 +27,7 @@ where
             };
 
             let filename = match y.filename() {
-                Some(x) => String::from(match x.to_str() {
-                    Some(w) => w,
-                    None => "",
-                }),
+                Some(x) => String::from(x.to_str().unwrap_or("")),
                 None => String::new(),
             };
 
@@ -84,7 +70,7 @@ where
     });
 
     if std::env::var("DEBUG_BACKTRACEIO").is_ok() {
-        println!("Payload: {}", payload.to_string());
+        println!("Payload: {}", payload);
     }
 
     let url = format!("{}/api/post?format=json&token={}", st.url, st.token);

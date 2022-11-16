@@ -1,10 +1,15 @@
 #[macro_use]
 extern crate serde_json;
 
+pub mod error;
+pub mod panic;
 mod sender;
 
 use std::collections::HashMap;
-use std::panic::PanicInfo;
+
+pub use error::init;
+pub use error::ResultExt;
+pub use panic::register_error_handler;
 
 #[derive(Debug, Clone)]
 pub struct SubmissionTarget {
@@ -16,18 +21,4 @@ pub struct SubmissionTarget {
 pub struct Report {
     pub annotations: HashMap<String, String>,
     pub attributes: HashMap<String, String>,
-}
-
-pub fn register_error_handler<T>(url: &str, token: &str, user_handler: T)
-where
-    T: Fn(&mut Report, &PanicInfo) -> () + Send + Sync + 'static,
-{
-    let submission_target = SubmissionTarget {
-        token: String::from(token),
-        url: String::from(url),
-    };
-
-    std::panic::set_hook(Box::new(move |panic_info| {
-        sender::submit(&submission_target, panic_info, &user_handler);
-    }));
 }

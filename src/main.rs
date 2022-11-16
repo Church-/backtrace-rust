@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::env;
 
+use backtraceio::ResultExt;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let progname = args.get(0).expect("should always have a program name");
@@ -22,11 +24,23 @@ fn main() {
         }
     }
 
+    backtraceio::init(&token, &url, None, Some(attributes.clone()));
+
     backtraceio::register_error_handler(url, token, move |r: &mut backtraceio::Report, _| {
-        for (key, value) in &attributes {
+        for (key, value) in &attributes.clone() {
             r.attributes.insert(key.to_string(), value.to_string());
         }
     });
+
+    match std::fs::File::open("./do_not_exist").submit_error() {
+        Ok(_) => {
+            eprintln!("No error");
+        }
+        Err(_) => {
+            eprintln!("Error");
+        }
+    }
+
     println!("Hello, world!");
     panic!("{}", panic_msg);
 }
