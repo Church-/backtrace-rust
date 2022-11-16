@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crossbeam_channel::{Receiver, Sender};
+use arc_swap::ArcSwapOption;
 use lazy_static::lazy_static;
 
 use crate::sender::submit;
@@ -8,7 +9,8 @@ use crate::Report;
 use crate::SubmissionTarget;
 
 lazy_static! {
-    static ref CHANNEL: (Sender<ErrorInfo>, Receiver<ErrorInfo>) = crossbeam_channel::unbounded();
+    static ref SENDER: ArcSwapOption<crossbeam_channel::Sender<ErrorInfo>> =
+        ArcSwapOption::from(None);
 }
 
 struct ErrorInfo {
@@ -22,6 +24,9 @@ pub fn init(
     annotations: Option<HashMap<String, String>>,
     attributes: Option<HashMap<String, String>>,
 ) {
+    let (sender, receiver) = crossbeam_channel::bounded(124);
+    SENDER.store(Some(Arc::new(sender)));
+
     let target = SubmissionTarget {
         token: String::from(token),
         url: String::from(url),
@@ -43,7 +48,7 @@ pub fn init(
     }
 
     std::thread::spawn(move || {
-        let recv = &CHANNEL.1;
+        let recv = &receiver;
         loop {
             if let Ok(error_info) = recv.try_recv() {
                 let mut report = report.clone();
@@ -69,14 +74,15 @@ where
         match self {
             Ok(v) => Ok(v),
             Err(e) => {
-                let error_info = ErrorInfo {
-                    backtrace: backtrace::Backtrace::new(),
-                    error: e.to_string(),
-                };
-                let sender = CHANNEL.0.clone();
+                if let Some(sender) = SENDER.load_full() {
+                    let error_info = ErrorInfo {
+                        backtrace: backtrace::Backtrace::new(),
+                        error: e.to_string(),
+                    };
 
-                if sender.try_send(error_info).is_err() {
-                    eprintln!("Failed to send data to channel");
+                    if sender.try_send(error_info).is_err() {
+                        eprintln!("Failed to send data to channel");
+                    }
                 }
                 Err(e)
             }
