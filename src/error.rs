@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
+use crossbeam_channel::select;
 use lazy_static::lazy_static;
 
 use crate::sender::submit;
@@ -50,13 +51,18 @@ pub fn init(
     std::thread::spawn(move || {
         let recv = &receiver;
         loop {
-            if let Ok(error_info) = recv.try_recv() {
-                let mut report = report.clone();
-                let target = target.clone();
-                report
-                    .attributes
-                    .insert(String::from("error.message"), error_info.error.to_string());
-                submit(&target, &mut report, error_info.backtrace);
+            select! {
+                recv(recv) -> error_info => {
+                    if let Ok(error_info) = error_info {
+                    let mut report = report.clone();
+                    let target = target.clone();
+                    report
+                        .attributes
+                        .insert(String::from("error.message"), error_info.error.to_string());
+
+                    submit(&target, &mut report, error_info.backtrace);
+                    }
+                }
             }
         }
     });
